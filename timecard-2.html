@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIMECARD</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0e0e0e;--panel:#161616;--panel2:#1c1c1c;--border:#2a2a2a;--steel:#3a3a3a;
+    --text:#d4cfc8;--muted:#666;--accent:#f5a623;--green:#4caf50;--red:#e53935;
+    --blue:#42a5f5;--amber:#ffb300;--offline:#444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 48px;
+    background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(255,255,255,0.02) 39px,rgba(255,255,255,0.02) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,0.02) 39px,rgba(255,255,255,0.02) 40px);}
+  body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.03) 0px,rgba(0,0,0,0.03) 1px,transparent 1px,transparent 3px);pointer-events:none;z-index:9999;}
+
+  .header{width:100%;max-width:520px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:16px;}
+  .logo{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:6px;color:var(--accent);text-shadow:0 0 20px rgba(245,166,35,0.4);}
+  .logo span{font-size:11px;font-family:'Share Tech Mono',monospace;color:var(--muted);display:block;letter-spacing:3px;margin-top:-4px;}
+
+  .status-badge{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:8px 14px;font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;}
+  .status-dot{width:10px;height:10px;border-radius:50%;background:var(--offline);transition:background 0.3s,box-shadow 0.3s;flex-shrink:0;}
+  .status-dot.online{background:var(--green);box-shadow:0 0 8px var(--green),0 0 16px rgba(76,175,80,0.4);animation:pdot 2s ease-in-out infinite;}
+  .status-dot.break{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:pdot 1.4s ease-in-out infinite;}
+  @keyframes pdot{0%,100%{opacity:1}50%{opacity:0.4}}
+  .status-label{color:var(--muted);transition:color 0.3s;}
+  .status-label.online{color:var(--green);}
+  .status-label.break{color:var(--amber);}
+
+  .clock-panel{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:28px 24px 20px;margin-bottom:16px;text-align:center;position:relative;overflow:hidden;}
+  .clock-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0.5;}
+  .clock-time{font-family:'Share Tech Mono',monospace;font-size:clamp(48px,14vw,72px);letter-spacing:4px;color:var(--accent);text-shadow:0 0 30px rgba(245,166,35,0.3);line-height:1;transition:color 0.4s;}
+  .clock-time.working{color:var(--green);text-shadow:0 0 30px rgba(76,175,80,0.3);}
+  .clock-time.on-break{color:var(--amber);text-shadow:0 0 30px rgba(255,179,0,0.3);}
+  .clock-date{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--muted);letter-spacing:3px;margin-top:8px;}
+
+  .elapsed-row{display:flex;justify-content:center;gap:32px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);}
+  .elapsed-item{text-align:center;opacity:0.4;transition:opacity 0.3s;}
+  .elapsed-item.active{opacity:1;}
+  .elapsed-item .val{font-family:'Share Tech Mono',monospace;font-size:20px;letter-spacing:2px;color:var(--text);}
+  .elapsed-item .lbl{font-size:10px;color:var(--muted);letter-spacing:2px;margin-top:3px;}
+
+  .card-panel{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:20px 24px;margin-bottom:16px;}
+  .card-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:4px;color:var(--muted);margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
+  .punch-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .punch-item{background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:12px 14px;transition:border-color 0.3s;}
+  .punch-item.filled{border-color:var(--steel);}
+  .punch-item .punch-lbl{font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px;}
+  .punch-item .punch-val{font-family:'Share Tech Mono',monospace;font-size:22px;letter-spacing:2px;color:var(--text);min-height:28px;transition:color 0.3s;}
+  .punch-item.filled .punch-val{color:var(--accent);}
+  .punch-item .punch-sec{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px;}
+  .empty-dash{color:var(--steel);font-size:18px;}
+
+  .btn-panel{width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+  .btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 24px;border:1px solid;border-radius:4px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:5px;cursor:pointer;transition:all 0.15s;position:relative;overflow:hidden;background:var(--panel2);}
+  .btn::after{content:'';position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity 0.15s;}
+  .btn:hover::after{opacity:0.06;}
+  .btn:active{transform:scale(0.98);}
+  .btn:disabled{opacity:0.2;cursor:not-allowed;pointer-events:none;}
+  .btn-start{border-color:var(--green);color:var(--green);}
+  .btn-break{border-color:var(--amber);color:var(--amber);}
+  .btn-resume{border-color:var(--blue);color:var(--blue);}
+  .btn-end{border-color:var(--red);color:var(--red);}
+  .btn-icon{font-size:16px;}
+
+  .summary-row{width:100%;max-width:520px;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .summary-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
+  .summary-card .s-val{font-family:'Share Tech Mono',monospace;font-size:24px;letter-spacing:2px;color:var(--text);}
+  .summary-card .s-lbl{font-size:10px;letter-spacing:2px;color:var(--muted);margin-top:4px;}
+
+  .history-panel{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:20px 24px;margin-bottom:16px;}
+  .history-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:4px;color:var(--muted);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;}
+  .history-title-btns{display:flex;gap:6px;}
+  .clear-btn{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--steel);background:none;border:1px solid var(--border);border-radius:3px;padding:3px 8px;cursor:pointer;letter-spacing:1px;transition:color 0.2s,border-color 0.2s;}
+  .clear-btn:hover{color:var(--red);border-color:var(--red);}
+  .history-empty{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--steel);letter-spacing:2px;text-align:center;padding:20px 0;}
+  .history-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+  .history-item:last-child{border-bottom:none;}
+  .h-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .h-dot.start{background:var(--green);}
+  .h-dot.break{background:var(--amber);}
+  .h-dot.resume{background:var(--blue);}
+  .h-dot.end{background:var(--red);}
+  .h-action{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;flex:1;}
+  .h-time{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--muted);}
+
+  /* 月次アーカイブ */
+  .monthly-panel{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:20px 24px;margin-bottom:16px;}
+  .monthly-header{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:4px;color:var(--muted);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
+  .month-selector{display:flex;gap:8px;align-items:center;margin-bottom:14px;}
+  .month-select{background:var(--panel2);border:1px solid var(--border);color:var(--text);font-family:'Share Tech Mono',monospace;font-size:12px;padding:6px 10px;border-radius:4px;cursor:pointer;letter-spacing:1px;}
+  .month-select:focus{outline:none;border-color:var(--accent);}
+  .csv-btn{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);border-radius:3px;padding:5px 10px;cursor:pointer;letter-spacing:1px;transition:all 0.2s;white-space:nowrap;}
+  .csv-btn:hover{background:var(--accent);color:var(--bg);}
+  .csv-btn:disabled{opacity:0.3;cursor:not-allowed;}
+
+  .monthly-table{width:100%;border-collapse:collapse;font-family:'Share Tech Mono',monospace;font-size:12px;}
+  .monthly-table th{text-align:left;color:var(--muted);letter-spacing:2px;font-size:10px;padding:6px 4px;border-bottom:1px solid var(--border);}
+  .monthly-table td{padding:10px 4px;border-bottom:1px solid rgba(42,42,42,0.5);color:var(--text);vertical-align:middle;}
+  .monthly-table tr:last-child td{border-bottom:none;}
+  .monthly-table .td-date{color:var(--muted);font-size:11px;}
+  .monthly-table .td-net{color:var(--accent);font-weight:bold;}
+  .monthly-total{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+  .monthly-total .t-lbl{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;}
+  .monthly-total .t-val{font-family:'Share Tech Mono',monospace;font-size:20px;color:var(--accent);letter-spacing:2px;}
+  .monthly-empty{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--steel);letter-spacing:2px;text-align:center;padding:20px 0;}
+
+  /* 閲覧画面 */
+  .view-mode-label{width:100%;max-width:520px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:3px;background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:8px 14px;margin-bottom:16px;text-align:center;}
+  .conn-dot{width:7px;height:7px;border-radius:50%;background:var(--steel);display:inline-block;margin-right:6px;}
+  .conn-dot.connected{background:var(--green);animation:pdot 2s ease-in-out infinite;}
+  .admin-status-card{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:28px 24px 20px;margin-bottom:16px;text-align:center;position:relative;overflow:hidden;}
+  .admin-status-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0.5;}
+  .admin-big-status{font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,10vw,56px);letter-spacing:8px;transition:color 0.4s;margin-bottom:6px;}
+  .admin-big-status.working{color:var(--green);text-shadow:0 0 20px rgba(76,175,80,0.5);}
+  .admin-big-status.on-break{color:var(--amber);text-shadow:0 0 20px rgba(255,179,0,0.5);}
+  .admin-big-status.idle,.admin-big-status.ended{color:var(--muted);}
+  .admin-sub{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:2px;}
+  .last-updated{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--steel);letter-spacing:1px;margin-top:12px;}
+
+  #adminView{width:100%;display:none;flex-direction:column;align-items:center;}
+  #punchView{width:100%;display:contents;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">TIMECARD<span id="modeLabel">ATTENDANCE SYSTEM v2.0</span></div>
+  <div class="status-badge">
+    <div class="status-dot" id="statusDot"></div>
+    <div class="status-label" id="statusLabel">OFFLINE</div>
+  </div>
+</div>
+
+<!-- 打刻画面 -->
+<div id="punchView">
+  <div class="clock-panel">
+    <div class="clock-time" id="clockTime">00:00:00</div>
+    <div class="clock-date" id="clockDate">---- -- --</div>
+    <div class="elapsed-row">
+      <div class="elapsed-item" id="elWorkItem"><div class="val" id="elWork">00:00:00</div><div class="lbl">勤務時間</div></div>
+      <div class="elapsed-item" id="elBreakItem"><div class="val" id="elBreak">00:00:00</div><div class="lbl">休憩時間</div></div>
+      <div class="elapsed-item" id="elNetItem"><div class="val" id="elNet">00:00:00</div><div class="lbl">実働時間</div></div>
+    </div>
+  </div>
+  <div class="card-panel">
+    <div class="card-title">PUNCH RECORD</div>
+    <div class="punch-grid">
+      <div class="punch-item" id="p-start"><div class="punch-lbl">▶ 勤務開始</div><div class="punch-val empty-dash" id="pv-start">——</div><div class="punch-sec" id="ps-start"></div></div>
+      <div class="punch-item" id="p-break"><div class="punch-lbl">⏸ 休憩開始</div><div class="punch-val empty-dash" id="pv-break">——</div><div class="punch-sec" id="ps-break"></div></div>
+      <div class="punch-item" id="p-resume"><div class="punch-lbl">▷ 休憩終了</div><div class="punch-val empty-dash" id="pv-resume">——</div><div class="punch-sec" id="ps-resume"></div></div>
+      <div class="punch-item" id="p-end"><div class="punch-lbl">■ 勤務終了</div><div class="punch-val empty-dash" id="pv-end">——</div><div class="punch-sec" id="ps-end"></div></div>
+    </div>
+  </div>
+  <div class="btn-panel">
+    <button class="btn btn-start" id="btnStart" onclick="punch('start')"><span class="btn-icon">▶</span> 勤務開始</button>
+    <button class="btn btn-break" id="btnBreak" onclick="punch('break')" disabled><span class="btn-icon">⏸</span> 休憩開始</button>
+    <button class="btn btn-resume" id="btnResume" onclick="punch('resume')" disabled><span class="btn-icon">▷</span> 休憩終了</button>
+    <button class="btn btn-end" id="btnEnd" onclick="punch('end')" disabled><span class="btn-icon">■</span> 勤務終了</button>
+  </div>
+  <div class="summary-row" id="summaryRow" style="display:none">
+    <div class="summary-card"><div class="s-val" id="sumWork">—</div><div class="s-lbl">本日の実働</div></div>
+    <div class="summary-card"><div class="s-val" id="sumBreak">—</div><div class="s-lbl">休憩合計</div></div>
+  </div>
+  <div class="history-panel">
+    <div class="history-title">
+      TODAY'S LOG
+      <div class="history-title-btns">
+        <button class="clear-btn" onclick="clearHistory()">RESET</button>
+      </div>
+    </div>
+    <div id="historyList"><div class="history-empty">— NO RECORDS —</div></div>
+  </div>
+
+  <!-- 月次アーカイブ -->
+  <div class="monthly-panel">
+    <div class="monthly-header">
+      MONTHLY ARCHIVE
+      <button class="csv-btn" id="csvBtn" onclick="downloadCSV()">⬇ CSV出力</button>
+    </div>
+    <div class="month-selector">
+      <select class="month-select" id="monthSelect" onchange="renderMonthly()"></select>
+    </div>
+    <div id="monthlyContent"><div class="monthly-empty">— NO RECORDS —</div></div>
+  </div>
+</div>
+
+<!-- 閲覧画面 -->
+<div id="adminView">
+  <div class="view-mode-label"><span class="conn-dot" id="connDot"></span>READ-ONLY VIEW — REALTIME</div>
+  <div class="admin-status-card">
+    <div class="admin-big-status idle" id="adminStatus">OFFLINE</div>
+    <div class="admin-sub" id="adminSub">勤務記録なし</div>
+    <div class="elapsed-row">
+      <div class="elapsed-item" id="aElWorkItem"><div class="val" id="aElWork">00:00:00</div><div class="lbl">勤務時間</div></div>
+      <div class="elapsed-item" id="aElBreakItem"><div class="val" id="aElBreak">00:00:00</div><div class="lbl">休憩時間</div></div>
+      <div class="elapsed-item" id="aElNetItem"><div class="val" id="aElNet">00:00:00</div><div class="lbl">実働時間</div></div>
+    </div>
+    <div class="last-updated" id="lastUpdated">最終更新: —</div>
+  </div>
+  <div class="card-panel">
+    <div class="card-title">PUNCH RECORD</div>
+    <div class="punch-grid">
+      <div class="punch-item" id="ap-start"><div class="punch-lbl">▶ 勤務開始</div><div class="punch-val empty-dash" id="apv-start">——</div><div class="punch-sec" id="aps-start"></div></div>
+      <div class="punch-item" id="ap-break"><div class="punch-lbl">⏸ 休憩開始</div><div class="punch-val empty-dash" id="apv-break">——</div><div class="punch-sec" id="aps-break"></div></div>
+      <div class="punch-item" id="ap-resume"><div class="punch-lbl">▷ 休憩終了</div><div class="punch-val empty-dash" id="apv-resume">——</div><div class="punch-sec" id="aps-resume"></div></div>
+      <div class="punch-item" id="ap-end"><div class="punch-lbl">■ 勤務終了</div><div class="punch-val empty-dash" id="apv-end">——</div><div class="punch-sec" id="aps-end"></div></div>
+    </div>
+  </div>
+  <div class="history-panel" style="margin-bottom:0">
+    <div class="history-title">TODAY'S LOG</div>
+    <div id="adminHistoryList"><div class="history-empty">— NO RECORDS —</div></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBzwGRkrq1l2-yf4W5BRrer8NCXoi9_7QU",
+  authDomain: "timecard-30838.firebaseapp.com",
+  databaseURL: "https://timecard-30838-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "timecard-30838",
+  storageBucket: "timecard-30838.firebasestorage.app",
+  messagingSenderId: "673529699859",
+  appId: "1:673529699859:web:2cc556953e2d8d0a0b69e6",
+  measurementId: "G-RH2V0QK5TX"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const tcRef      = ref(db, 'timecard');          // 当日リアルタイム
+const archiveRef = ref(db, 'archive');           // 月次アーカイブ
+
+// モード判定
+const isAdmin = new URLSearchParams(location.search).has('view');
+if (isAdmin) {
+  document.getElementById('punchView').style.display = 'none';
+  document.getElementById('adminView').style.display = 'flex';
+  document.getElementById('modeLabel').textContent = 'READ-ONLY VIEW';
+}
+
+// ユーティリティ
+const pad = n => String(n).padStart(2,'0');
+const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const fmtDate = d => { const days=['SUN','MON','TUE','WED','THU','FRI','SAT']; return `${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())}  ${days[d.getDay()]}`; };
+const fmtElapsed = ms => { const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60; return `${pad(h)}:${pad(m)}:${pad(sc)}`; };
+const fmtHHMM = ms => { const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return `${pad(h)}:${pad(m)}`; };
+const msToDecimal = ms => (ms/3600000).toFixed(2); // 小数時間（CSV用）
+
+// 状態
+const state = { phase:'idle', startTime:null, breakStart:null, breakTotal:0, history:[] };
+
+// 時計
+function tickClock() {
+  const now = new Date();
+  if (!isAdmin) {
+    document.getElementById('clockTime').textContent = fmtTime(now);
+    document.getElementById('clockDate').textContent = fmtDate(now);
+  }
+  if (state.phase === 'working' || state.phase === 'break') {
+    const totalMs = now - state.startTime;
+    const breakMs = state.phase === 'break' ? state.breakTotal + (now - state.breakStart) : state.breakTotal;
+    const netMs   = Math.max(0, totalMs - breakMs);
+    const prefix  = isAdmin ? 'a' : '';
+    document.getElementById(prefix+'ElWork').textContent  = fmtElapsed(totalMs);
+    document.getElementById(prefix+'ElBreak').textContent = fmtElapsed(breakMs);
+    document.getElementById(prefix+'ElNet').textContent   = fmtElapsed(netMs);
+  }
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// パンチカードUI
+function setPunch(prefix, key, timeStr) {
+  const [hh,mm,ss] = timeStr.split(':').map(Number);
+  const p=document.getElementById(prefix+key), v=document.getElementById(prefix+'v-'+key), s=document.getElementById(prefix+'s-'+key);
+  if(!p||!v||!s)return;
+  p.classList.add('filled'); v.classList.remove('empty-dash');
+  v.textContent=`${pad(hh)}:${pad(mm)}`; s.textContent=`:${pad(ss)}`;
+}
+function resetPunch(prefix, key) {
+  const p=document.getElementById(prefix+key), v=document.getElementById(prefix+'v-'+key), s=document.getElementById(prefix+'s-'+key);
+  if(!p||!v||!s)return;
+  p.classList.remove('filled'); v.classList.add('empty-dash'); v.textContent='——'; s.textContent='';
+}
+
+function setStatusUI(phase) {
+  const dot=document.getElementById('statusDot'), lbl=document.getElementById('statusLabel');
+  dot.className='status-dot'; lbl.className='status-label';
+  if(phase==='working'){dot.classList.add('online');lbl.classList.add('online');lbl.textContent='ONLINE';}
+  else if(phase==='break'){dot.classList.add('break');lbl.classList.add('break');lbl.textContent='ON BREAK';}
+  else{lbl.textContent=phase==='ended'?'FINISHED':'OFFLINE';}
+  if(!isAdmin){
+    const ct=document.getElementById('clockTime');
+    ct.className='clock-time';
+    if(phase==='working')ct.classList.add('working');
+    else if(phase==='break')ct.classList.add('on-break');
+  }
+}
+
+function setButtons(phase) {
+  document.getElementById('btnStart').disabled  = phase!=='idle';
+  document.getElementById('btnBreak').disabled  = phase!=='working';
+  document.getElementById('btnResume').disabled = phase!=='break';
+  document.getElementById('btnEnd').disabled    = phase!=='working';
+}
+
+const LABELS = {start:'勤務開始',break:'休憩開始',resume:'休憩終了',end:'勤務終了'};
+function renderHistory(hist, elId) {
+  const el=document.getElementById(elId);
+  if(!hist||hist.length===0){el.innerHTML='<div class="history-empty">— NO RECORDS —</div>';return;}
+  el.innerHTML=[...hist].reverse().map(h=>`
+    <div class="history-item">
+      <div class="h-dot ${h.type}"></div>
+      <div class="h-action">${LABELS[h.type]||h.type}</div>
+      <div class="h-time">${h.timeStr}</div>
+    </div>`).join('');
+}
+
+function saveToFirebase() {
+  set(tcRef, {
+    phase: state.phase,
+    startTime:  state.startTime  ? state.startTime.getTime()  : null,
+    breakStart: state.breakStart ? state.breakStart.getTime() : null,
+    breakTotal: state.breakTotal,
+    history: state.history,
+    updatedAt: Date.now()
+  });
+}
+
+// ── 月次アーカイブ保存 ──
+async function saveToArchive(date, startTime, endTime, breakMs, netMs) {
+  const y = date.getFullYear();
+  const m = pad(date.getMonth()+1);
+  const d = pad(date.getDate());
+  const dayRef = ref(db, `archive/${y}-${m}/${d}`);
+  await set(dayRef, {
+    date: `${y}-${m}-${d}`,
+    startTime: fmtTime(startTime),
+    endTime:   fmtTime(endTime),
+    breakMin:  Math.round(breakMs/60000),
+    netMs:     netMs,
+    netHHMM:   fmtHHMM(netMs),
+    history:   state.history
+  });
+}
+
+// ── 月次一覧表示 ──
+window.renderMonthly = async function() {
+  const sel = document.getElementById('monthSelect').value;
+  if (!sel) return;
+  const monthRef = ref(db, `archive/${sel}`);
+  const snap = await get(monthRef);
+  const content = document.getElementById('monthlyContent');
+  const csvBtn = document.getElementById('csvBtn');
+
+  if (!snap.exists()) {
+    content.innerHTML='<div class="monthly-empty">— NO RECORDS —</div>';
+    csvBtn.disabled = true;
+    return;
+  }
+
+  const days = snap.val();
+  const rows = Object.values(days).sort((a,b)=>a.date.localeCompare(b.date));
+  let totalNet = 0;
+  rows.forEach(r=>totalNet+=r.netMs||0);
+
+  content.innerHTML = `
+    <table class="monthly-table">
+      <thead>
+        <tr>
+          <th>日付</th>
+          <th>開始</th>
+          <th>終了</th>
+          <th>休憩</th>
+          <th>実働</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>`
+          <tr>
+            <td class="td-date">${r.date.slice(5).replace('-','/')}</td>
+            <td>${r.startTime||'—'}</td>
+            <td>${r.endTime||'—'}</td>
+            <td>${r.breakMin||0}分</td>
+            <td class="td-net">${r.netHHMM||'—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="monthly-total">
+      <span class="t-lbl">月間合計実働</span>
+      <span class="t-val">${fmtHHMM(totalNet)}</span>
+    </div>`;
+  csvBtn.disabled = false;
+};
+
+// ── CSV出力 ──
+window.downloadCSV = async function() {
+  const sel = document.getElementById('monthSelect').value;
+  if (!sel) return;
+  const monthRef = ref(db, `archive/${sel}`);
+  const snap = await get(monthRef);
+  if (!snap.exists()) return;
+
+  const days = Object.values(snap.val()).sort((a,b)=>a.date.localeCompare(b.date));
+  const BOM = '\uFEFF'; // Excel文字化け対策
+  const header = '日付,勤務開始,勤務終了,休憩時間(分),実働時間,実働時間(h)';
+  const lines = days.map(r =>
+    `${r.date},${r.startTime||''},${r.endTime||''},${r.breakMin||0},${r.netHHMM||''},${msToDecimal(r.netMs||0)}`
+  );
+
+  // 月間合計
+  const totalNet = days.reduce((s,r)=>s+(r.netMs||0),0);
+  lines.push(`合計,,,,,${msToDecimal(totalNet)}`);
+
+  const csv = BOM + [header, ...lines].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `timecard_${sel}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+// ── 月セレクタ更新 ──
+async function updateMonthSelector() {
+  const snap = await get(archiveRef);
+  const sel  = document.getElementById('monthSelect');
+  const current = sel.value;
+
+  if (!snap.exists()) {
+    sel.innerHTML='<option value="">— データなし —</option>';
+    return;
+  }
+
+  const months = Object.keys(snap.val()).sort().reverse();
+  sel.innerHTML = months.map(m=>`<option value="${m}">${m}</option>`).join('');
+  if (current && months.includes(current)) sel.value = current;
+  renderMonthly();
+}
+
+// 打刻処理
+window.punch = function(action) {
+  const now = new Date();
+  const timeStr = fmtTime(now);
+  switch(action) {
+    case 'start':
+      state.phase='working'; state.startTime=now; state.breakTotal=0; state.history=[];
+      setPunch('p-','start',timeStr);
+      ['break','resume','end'].forEach(k=>resetPunch('p-',k));
+      document.getElementById('summaryRow').style.display='none';
+      ['elWorkItem','elBreakItem','elNetItem'].forEach(id=>document.getElementById(id).classList.add('active'));
+      break;
+    case 'break':
+      state.phase='break'; state.breakStart=now;
+      setPunch('p-','break',timeStr);
+      break;
+    case 'resume':
+      state.phase='working'; state.breakTotal+=now-state.breakStart;
+      setPunch('p-','resume',timeStr);
+      break;
+    case 'end':
+      state.phase='ended';
+      setPunch('p-','end',timeStr);
+      const totalMs=now-state.startTime, breakMs=state.breakTotal, netMs=Math.max(0,totalMs-breakMs);
+      document.getElementById('sumWork').textContent=fmtHHMM(netMs);
+      document.getElementById('sumBreak').textContent=fmtHHMM(breakMs);
+      document.getElementById('summaryRow').style.display='grid';
+      document.getElementById('elWork').textContent=fmtElapsed(totalMs);
+      document.getElementById('elBreak').textContent=fmtElapsed(breakMs);
+      document.getElementById('elNet').textContent=fmtElapsed(netMs);
+      // アーカイブ保存
+      saveToArchive(now, state.startTime, now, breakMs, netMs).then(()=>updateMonthSelector());
+      break;
+  }
+  state.history.push({type:action, timeStr});
+  setStatusUI(state.phase);
+  setButtons(state.phase);
+  renderHistory(state.history,'historyList');
+  saveToFirebase();
+};
+
+window.clearHistory = function() {
+  if(!confirm('本日の記録をリセットしますか？\n（月次アーカイブは削除されません）'))return;
+  state.phase='idle'; state.startTime=null; state.breakStart=null; state.breakTotal=0; state.history=[];
+  ['start','break','resume','end'].forEach(k=>resetPunch('p-',k));
+  setStatusUI('idle'); setButtons('idle');
+  renderHistory([],'historyList');
+  ['elWorkItem','elBreakItem','elNetItem'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  ['elWork','elBreak','elNet'].forEach(id=>document.getElementById(id).textContent='00:00:00');
+  document.getElementById('summaryRow').style.display='none';
+  remove(tcRef);
+};
+
+// 閲覧画面：Firebase購読
+if (isAdmin) {
+  document.getElementById('connDot').classList.add('connected');
+  onValue(tcRef, snapshot => {
+    const d = snapshot.val();
+    if (!d) {
+      document.getElementById('adminStatus').className='admin-big-status idle';
+      document.getElementById('adminStatus').textContent='OFFLINE';
+      document.getElementById('adminSub').textContent='勤務記録なし';
+      document.getElementById('lastUpdated').textContent='最終更新: —';
+      ['start','break','resume','end'].forEach(k=>resetPunch('ap-',k));
+      renderHistory([],'adminHistoryList');
+      ['aElWorkItem','aElBreakItem','aElNetItem'].forEach(id=>document.getElementById(id).classList.remove('active'));
+      setStatusUI('idle');
+      state.phase='idle'; state.startTime=null; state.breakStart=null; state.breakTotal=0;
+      return;
+    }
+    state.phase     = d.phase;
+    state.startTime  = d.startTime  ? new Date(d.startTime)  : null;
+    state.breakStart = d.breakStart ? new Date(d.breakStart) : null;
+    state.breakTotal = d.breakTotal || 0;
+    const phaseLabel={idle:'OFFLINE',working:'ONLINE',break:'ON BREAK',ended:'FINISHED'};
+    const phaseSub  ={idle:'勤務記録なし',working:'勤務中',break:'休憩中',ended:'本日の勤務終了'};
+    const cls       ={idle:'idle',working:'working',break:'on-break',ended:'ended'};
+    const as=document.getElementById('adminStatus');
+    as.className=`admin-big-status ${cls[d.phase]||'idle'}`;
+    as.textContent=phaseLabel[d.phase]||d.phase;
+    document.getElementById('adminSub').textContent=phaseSub[d.phase]||'';
+    document.getElementById('lastUpdated').textContent=`最終更新: ${fmtTime(new Date(d.updatedAt))}`;
+    setStatusUI(d.phase);
+    ['start','break','resume','end'].forEach(k=>resetPunch('ap-',k));
+    (d.history||[]).forEach(h=>setPunch('ap-',h.type,h.timeStr));
+    const show=d.phase!=='idle';
+    ['aElWorkItem','aElBreakItem','aElNetItem'].forEach(id=>document.getElementById(id).classList.toggle('active',show));
+    renderHistory(d.history,'adminHistoryList');
+    tickClock();
+  });
+}
+
+// 初期化
+setButtons('idle');
+if (!isAdmin) updateMonthSelector();
+</script>
+</body>
+</html>
