@@ -352,16 +352,19 @@ function dateStr(d) {
 }
 
 function saveToFirebase() {
-  // dateは「勤務開始した日付」で固定（日をまたいでも変わらない）
   const workDate = state.firstStartTime || state.startTime || new Date();
   set(tcRef, {
     phase: state.phase,
     startTime:      state.startTime      ? state.startTime.getTime()      : null,
     breakStart:     state.breakStart     ? state.breakStart.getTime()     : null,
     firstStartTime: state.firstStartTime ? state.firstStartTime.getTime() : null,
-    breakTotal:  state.breakTotal,
-    totalNetMs:  state.totalNetMs  || 0,
-    totalBreakMs:state.totalBreakMs|| 0,
+    breakTotal:          state.breakTotal          || 0,
+    prevTotalWorkMs:     state.prevTotalWorkMs      || 0,
+    prevTotalBreakMs:    state.prevTotalBreakMs     || 0,
+    prevTotalNetMs:      state.prevTotalNetMs       || 0,
+    lastSessionMs:       state.lastSessionMs        || 0,
+    lastSessionBreakMs:  state.lastSessionBreakMs   || 0,
+    lastSessionNetMs:    state.lastSessionNetMs     || 0,
     history: state.history,
     updatedAt: Date.now(),
     date: dateStr(workDate)
