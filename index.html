@@ -102,6 +102,9 @@
   .monthly-table tr:last-child td{border-bottom:none;}
   .monthly-table .td-date{color:var(--muted);font-size:11px;}
   .monthly-table .td-net{color:var(--accent);font-weight:bold;}
+  .monthly-table .td-detail{font-size:10px;line-height:1.5;color:var(--muted);white-space:normal;}
+  .monthly-table .day-total td{border-top:1px solid var(--border);font-weight:bold;background:rgba(255,255,255,0.02);}
+  .monthly-table .day-total .td-net{color:var(--accent);}
   .monthly-total{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
   .monthly-total .t-lbl{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px;}
   .monthly-total .t-val{font-family:'Share Tech Mono',monospace;font-size:20px;color:var(--accent);letter-spacing:2px;}
@@ -250,6 +253,102 @@ const fmtElapsed = ms => { const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Ma
 const fmtHHMM = ms => { const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return `${pad(h)}:${pad(m)}`; };
 const msToDecimal = ms => (ms/3600000).toFixed(2); // 小数時間（CSV用）
 
+const timeStrToMs = timeStr => {
+  if (!timeStr) return 0;
+  const [h,m,s] = timeStr.split(':').map(v => Number(v || 0));
+  return ((h * 60 + m) * 60 + s) * 1000;
+};
+const formatRanges = ranges => {
+  if (!ranges || ranges.length === 0) return '—';
+  return ranges.map(r => `${r.start}–${r.end}`).join(' / ');
+};
+function buildSessionsFromHistory(history=[], fallbackStartTime=null, fallbackEndTime=null) {
+  const sessions = [];
+  let current = null;
+  let workStart = null;
+  let breakStart = null;
+
+  const finalizeCurrent = (endTimeStr) => {
+    if (!current) return;
+    if (breakStart) {
+      current.breakRanges.push({ start: breakStart, end: endTimeStr });
+      breakStart = null;
+    }
+    if (workStart) {
+      current.workRanges.push({ start: workStart, end: endTimeStr });
+      workStart = null;
+    }
+    current.startTime = current.startTime || (fallbackStartTime ? fmtTime(fallbackStartTime) : '');
+    current.endTime = endTimeStr || current.endTime || (fallbackEndTime ? fmtTime(fallbackEndTime) : '');
+    current.breakMs = current.breakRanges.reduce((sum, r) => sum + Math.max(0, timeStrToMs(r.end) - timeStrToMs(r.start)), 0);
+    const grossMs = current.startTime && current.endTime
+      ? Math.max(0, timeStrToMs(current.endTime) - timeStrToMs(current.startTime))
+      : 0;
+    current.netMs = Math.max(0, grossMs - current.breakMs);
+    current.breakHHMM = fmtHHMM(current.breakMs);
+    current.netHHMM = fmtHHMM(current.netMs);
+    current.workRangesText = formatRanges(current.workRanges);
+    current.breakRangesText = formatRanges(current.breakRanges);
+    sessions.push(current);
+    current = null;
+  };
+
+  (history || []).forEach(h => {
+    if (h.type === 'start') {
+      if (current) finalizeCurrent(h.timeStr);
+      current = { startTime: h.timeStr, endTime: '', workRanges: [], breakRanges: [] };
+      workStart = h.timeStr;
+      breakStart = null;
+    } else if (h.type === 'break') {
+      if (!current) return;
+      if (workStart) current.workRanges.push({ start: workStart, end: h.timeStr });
+      workStart = null;
+      breakStart = h.timeStr;
+    } else if (h.type === 'resume') {
+      if (!current) return;
+      if (breakStart) current.breakRanges.push({ start: breakStart, end: h.timeStr });
+      breakStart = null;
+      workStart = h.timeStr;
+    } else if (h.type === 'end') {
+      if (!current) {
+        current = { startTime: fallbackStartTime ? fmtTime(fallbackStartTime) : '', endTime: '', workRanges: [], breakRanges: [] };
+      }
+      finalizeCurrent(h.timeStr);
+    }
+  });
+
+  if (current) finalizeCurrent(fallbackEndTime ? fmtTime(fallbackEndTime) : current.endTime || current.startTime || '');
+
+  return sessions;
+}
+function buildArchiveDayRecord(date, startTime, endTime, history=[]) {
+  const sessions = buildSessionsFromHistory(history, startTime, endTime);
+  const totalBreakMs = sessions.reduce((sum, s) => sum + (s.breakMs || 0), 0);
+  const totalNetMs = sessions.reduce((sum, s) => sum + (s.netMs || 0), 0);
+  return {
+    date,
+    startTime: sessions[0]?.startTime || fmtTime(startTime),
+    endTime: sessions[sessions.length - 1]?.endTime || fmtTime(endTime),
+    breakMin: Math.round(totalBreakMs/60000),
+    breakHHMM: fmtHHMM(totalBreakMs),
+    netMs: totalNetMs,
+    netHHMM: fmtHHMM(totalNetMs),
+    sessions,
+    history
+  };
+}
+function normalizeArchiveDay(day) {
+  if (!day) return null;
+  if (Array.isArray(day.sessions) && day.sessions.length) {
+    return {
+      ...day,
+      breakHHMM: day.breakHHMM || fmtHHMM((day.breakMin || 0) * 60000),
+      netHHMM: day.netHHMM || fmtHHMM(day.netMs || 0)
+    };
+  }
+  return buildArchiveDayRecord(day.date, new Date(`${day.date}T${day.startTime || '00:00:00'}`), new Date(`${day.date}T${day.endTime || '00:00:00'}`), day.history || []);
+}
+
 // 状態
 const state = { phase:'idle', startTime:null, breakStart:null, breakTotal:0, history:[] };
 
@@ -327,7 +426,7 @@ function setButtons(phase) {
   document.getElementById('btnStart').disabled  = phase!=='idle' && phase!=='ended';
   document.getElementById('btnBreak').disabled  = phase!=='working';
   document.getElementById('btnResume').disabled = phase!=='break';
-  document.getElementById('btnEnd').disabled    = phase!=='working';
+  document.getElementById('btnEnd').disabled    = !(phase==='working' || phase==='break');
 }
 
 const LABELS = {start:'勤務開始',break:'休憩開始',resume:'休憩終了',end:'勤務終了'};
@@ -379,15 +478,8 @@ async function saveToArchive(date, startTime, endTime, breakMs, netMs) {
   const m = pad(archiveDate.getMonth()+1);
   const d = pad(archiveDate.getDate());
   const dayRef = ref(db, `archive/${y}-${m}/${d}`);
-  await set(dayRef, {
-    date: `${y}-${m}-${d}`,
-    startTime: fmtTime(startTime),
-    endTime:   fmtTime(endTime),
-    breakMin:  Math.round(breakMs/60000),
-    netMs:     netMs,
-    netHHMM:   fmtHHMM(netMs),
-    history:   state.history
-  });
+  const record = buildArchiveDayRecord(`${y}-${m}-${d}`, startTime, endTime, state.history);
+  await set(dayRef, record);
 }
 
 // ── 月次一覧表示 ──
@@ -405,10 +497,45 @@ window.renderMonthly = async function() {
     return;
   }
 
-  const days = snap.val();
-  const rows = Object.values(days).sort((a,b)=>a.date.localeCompare(b.date));
+  const days = Object.values(snap.val())
+    .map(normalizeArchiveDay)
+    .filter(Boolean)
+    .sort((a,b)=>a.date.localeCompare(b.date));
+
   let totalNet = 0;
-  rows.forEach(r=>totalNet+=r.netMs||0);
+  days.forEach(r=>totalNet += r.netMs || 0);
+
+  const bodyHtml = days.map(day => {
+    const sessions = day.sessions || [];
+    const rows = sessions.length ? sessions.map((s, idx) => `
+      <tr>
+        <td class="td-date">${idx===0 ? day.date.slice(5).replace('-','/') : ''}</td>
+        <td>${s.startTime || '—'}</td>
+        <td>${s.endTime || '—'}</td>
+        <td>${s.breakHHMM || '00:00'}</td>
+        <td class="td-net">${s.netHHMM || '00:00'}</td>
+        <td class="td-detail">
+          <div>勤務: ${s.workRangesText || '—'}</div>
+          <div>休憩: ${s.breakRangesText || '—'}</div>
+        </td>
+      </tr>`).join('') : `
+      <tr>
+        <td class="td-date">${day.date.slice(5).replace('-','/')}</td>
+        <td>${day.startTime || '—'}</td>
+        <td>${day.endTime || '—'}</td>
+        <td>${day.breakHHMM || ((day.breakMin||0) + '分')}</td>
+        <td class="td-net">${day.netHHMM || '—'}</td>
+        <td class="td-detail"><div>勤務: —</div><div>休憩: —</div></td>
+      </tr>`;
+    const totalRow = `
+      <tr class="day-total">
+        <td colspan="3">日計</td>
+        <td>${day.breakHHMM || '00:00'}</td>
+        <td class="td-net">${day.netHHMM || '00:00'}</td>
+        <td class="td-detail">セッション数: ${sessions.length || 1}</td>
+      </tr>`;
+    return rows + totalRow;
+  }).join('');
 
   content.innerHTML = `
     <table class="monthly-table">
@@ -419,18 +546,10 @@ window.renderMonthly = async function() {
           <th>終了</th>
           <th>休憩</th>
           <th>実働</th>
+          <th>内訳</th>
         </tr>
       </thead>
-      <tbody>
-        ${rows.map(r=>`
-          <tr>
-            <td class="td-date">${r.date.slice(5).replace('-','/')}</td>
-            <td>${r.startTime||'—'}</td>
-            <td>${r.endTime||'—'}</td>
-            <td>${r.breakMin||0}分</td>
-            <td class="td-net">${r.netHHMM||'—'}</td>
-          </tr>`).join('')}
-      </tbody>
+      <tbody>${bodyHtml}</tbody>
     </table>
     <div class="monthly-total">
       <span class="t-lbl">月間合計実働</span>
@@ -447,16 +566,32 @@ window.downloadCSV = async function() {
   const snap = await get(monthRef);
   if (!snap.exists()) return;
 
-  const days = Object.values(snap.val()).sort((a,b)=>a.date.localeCompare(b.date));
-  const BOM = '\uFEFF'; // Excel文字化け対策
-  const header = '日付,勤務開始,勤務終了,休憩時間(分),実働時間,実働時間(h)';
-  const lines = days.map(r =>
-    `${r.date},${r.startTime||''},${r.endTime||''},${r.breakMin||0},${r.netHHMM||''},${msToDecimal(r.netMs||0)}`
-  );
+  const days = Object.values(snap.val())
+    .map(normalizeArchiveDay)
+    .filter(Boolean)
+    .sort((a,b)=>a.date.localeCompare(b.date));
 
-  // 月間合計
+  const BOM = '\uFEFF'; // Excel文字化け対策
+  const header = '日付,区分,勤務開始,勤務終了,休憩時間,実働時間,実働時間(h),勤務内訳,休憩内訳';
+  const lines = [];
+  days.forEach(day => {
+    const sessions = day.sessions || [];
+    if (sessions.length) {
+      sessions.forEach((s, idx) => {
+        lines.push(
+          `${day.date},セッション${idx+1},${s.startTime||''},${s.endTime||''},${s.breakHHMM||''},${s.netHHMM||''},${msToDecimal(s.netMs||0)},"${s.workRangesText||''}","${s.breakRangesText||''}"`
+        );
+      });
+    } else {
+      lines.push(
+        `${day.date},セッション1,${day.startTime||''},${day.endTime||''},${day.breakHHMM||''},${day.netHHMM||''},${msToDecimal(day.netMs||0)},"",""`
+      );
+    }
+    lines.push(`${day.date},日計,, ,${day.breakHHMM||''},${day.netHHMM||''},${msToDecimal(day.netMs||0)},"",""`);
+  });
+
   const totalNet = days.reduce((s,r)=>s+(r.netMs||0),0);
-  lines.push(`合計,,,,,${msToDecimal(totalNet)}`);
+  lines.push(`合計,月計,,, ,${fmtHHMM(totalNet)},${msToDecimal(totalNet)},"",""`);
 
   const csv = BOM + [header, ...lines].join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
@@ -516,10 +651,11 @@ window.punch = function(action) {
       setPunch('p-','resume',timeStr);
       break;
     case 'end': {
+      const extraBreakMs = state.phase === 'break' && state.breakStart ? (now - state.breakStart) : 0;
       state.phase='ended';
       setPunch('p-','end',timeStr);
       const sMs  = now - state.startTime;
-      const bMs  = state.breakTotal;
+      const bMs  = state.breakTotal + extraBreakMs;
       const nMs  = Math.max(0, sMs - bMs);
       // 今のセッション結果を保存
       state.lastSessionMs      = sMs;
