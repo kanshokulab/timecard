@@ -65,6 +65,17 @@
   .btn-end{border-color:var(--red);color:var(--red);}
   .btn-icon{font-size:16px;}
 
+  .type-panel{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px 18px;margin-bottom:16px;}
+  .type-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:4px;color:var(--muted);margin-bottom:12px;}
+  .type-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .type-btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:14px 12px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;font-size:16px;display:flex;align-items:center;justify-content:center;gap:10px;transition:all 0.15s;}
+  .type-btn:hover{border-color:var(--accent);}
+  .type-btn.active{border-color:var(--accent);box-shadow:0 0 0 1px rgba(245,166,35,0.2) inset;color:var(--accent);}
+  .type-emoji{font-size:22px;line-height:1;}
+  .current-type{margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--muted);text-align:center;}
+  .type-badge{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:26px;padding:0 8px;border:1px solid var(--border);border-radius:999px;background:var(--panel2);font-size:16px;line-height:1;}
+  .admin-type{margin-top:10px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:2px;}
+
   .summary-row{width:100%;max-width:520px;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
   .summary-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
   .summary-card .s-val{font-family:'Share Tech Mono',monospace;font-size:24px;letter-spacing:2px;color:var(--text);}
@@ -157,6 +168,14 @@
       <div class="punch-item" id="p-end"><div class="punch-lbl">■ 勤務終了</div><div class="punch-val empty-dash" id="pv-end">——</div><div class="punch-sec" id="ps-end"></div></div>
     </div>
   </div>
+  <div class="type-panel">
+    <div class="type-title">WORK TYPE</div>
+    <div class="type-grid">
+      <button class="type-btn active" id="typeChef" onclick="setWorkType('chef')"><span class="type-emoji">👩‍🍳</span><span>TYPE A</span></button>
+      <button class="type-btn" id="typeCandle" onclick="setWorkType('candle')"><span class="type-emoji">🕯</span><span>TYPE B</span></button>
+    </div>
+    <div class="current-type" id="currentTypeLabel">CURRENT TYPE : 👩‍🍳</div>
+  </div>
   <div class="btn-panel">
     <button class="btn btn-start" id="btnStart" onclick="punch('start')"><span class="btn-icon">▶</span> 勤務開始</button>
     <button class="btn btn-break" id="btnBreak" onclick="punch('break')" disabled><span class="btn-icon">⏸</span> 休憩開始</button>
@@ -196,6 +215,7 @@
   <div class="admin-status-card">
     <div class="admin-big-status idle" id="adminStatus">OFFLINE</div>
     <div class="admin-sub" id="adminSub">勤務記録なし</div>
+    <div class="admin-type" id="adminType">勤務区分: —</div>
     <div class="elapsed-row">
       <div class="elapsed-item" id="aElWorkItem"><div class="val" id="aElWork">00:00:00</div><div class="lbl">勤務時間</div></div>
       <div class="elapsed-item" id="aElBreakItem"><div class="val" id="aElBreak">00:00:00</div><div class="lbl">休憩時間</div></div>
@@ -297,6 +317,7 @@ function buildSessionFromCurrentState(endTime) {
   session.breakHHMM = fmtHHMM(breakMs);
   session.netMs = netMs;
   session.netHHMM = fmtHHMM(netMs);
+  session.workType = state.sessionWorkType || state.currentWorkType || 'chef';
   return session;
 }
 function normalizeSessionsArray(sessions=[]) {
@@ -304,6 +325,7 @@ function normalizeSessionsArray(sessions=[]) {
     ...s,
     breakMs: s.breakMs || ((s.breakMin || 0) * 60000),
     breakHHMM: s.breakHHMM || fmtHHMM(s.breakMs || ((s.breakMin || 0) * 60000)),
+    workType: s.workType || 'chef',
     netMs: s.netMs || 0,
     netHHMM: s.netHHMM || fmtHHMM(s.netMs || 0),
     workRangesText: s.workRangesText || formatRanges(s.workRanges || []),
@@ -345,7 +367,7 @@ function buildSessionsFromHistory(history=[], fallbackStartTime=null, fallbackEn
   (history || []).forEach(h => {
     if (h.type === 'start') {
       if (current) finalizeCurrent(h.timeStr);
-      current = { startTime: h.timeStr, endTime: '', workRanges: [], breakRanges: [] };
+      current = { startTime: h.timeStr, endTime: '', workRanges: [], breakRanges: [], workType: h.workType || 'chef' };
       workStart = h.timeStr;
       breakStart = null;
     } else if (h.type === 'break') {
@@ -360,7 +382,7 @@ function buildSessionsFromHistory(history=[], fallbackStartTime=null, fallbackEn
       workStart = h.timeStr;
     } else if (h.type === 'end') {
       if (!current) {
-        current = { startTime: fallbackStartTime ? fmtTime(fallbackStartTime) : '', endTime: '', workRanges: [], breakRanges: [] };
+        current = { startTime: fallbackStartTime ? fmtTime(fallbackStartTime) : '', endTime: '', workRanges: [], breakRanges: [], workType: 'chef' };
       }
       finalizeCurrent(h.timeStr);
     }
@@ -430,7 +452,32 @@ function normalizeArchiveDay(day) {
 }
 
 // 状態
-const state = { phase:'idle', startTime:null, breakStart:null, breakTotal:0, history:[] };
+const WORK_TYPES = {
+  chef: { icon:'👩‍🍳', label:'TYPE A' },
+  candle: { icon:'🕯', label:'TYPE B' }
+};
+
+const state = { phase:'idle', startTime:null, breakStart:null, breakTotal:0, history:[], currentWorkType:'chef', sessionWorkType:'chef' };
+
+window.setWorkType = function(type) {
+  if (!WORK_TYPES[type]) return;
+  state.currentWorkType = type;
+  const chefBtn = document.getElementById('typeChef');
+  const candleBtn = document.getElementById('typeCandle');
+  if (chefBtn && candleBtn) {
+    chefBtn.classList.toggle('active', type === 'chef');
+    candleBtn.classList.toggle('active', type === 'candle');
+  }
+  const currentTypeLabel = document.getElementById('currentTypeLabel');
+  if (currentTypeLabel) currentTypeLabel.textContent = `CURRENT TYPE : ${WORK_TYPES[type].icon}`;
+};
+
+function workTypeIcon(type) {
+  return (WORK_TYPES[type] || WORK_TYPES.chef).icon;
+}
+function workTypeLabel(type) {
+  return (WORK_TYPES[type] || WORK_TYPES.chef).label;
+}
 
 // 時計
 function tickClock() {
@@ -544,6 +591,8 @@ function saveToFirebase() {
     lastSessionMs:       state.lastSessionMs        || 0,
     lastSessionBreakMs:  state.lastSessionBreakMs   || 0,
     lastSessionNetMs:    state.lastSessionNetMs     || 0,
+    currentWorkType: state.currentWorkType || 'chef',
+    sessionWorkType: state.sessionWorkType || state.currentWorkType || 'chef',
     history: state.history,
     updatedAt: Date.now(),
     date: dateStr(workDate)
@@ -619,6 +668,7 @@ window.renderMonthly = async function() {
     const rows = sessions.length ? sessions.map((s, idx) => `
       <tr>
         <td class="td-date">${idx===0 ? day.date.slice(5).replace('-','/') : '↳'}</td>
+        <td><span class="type-badge">${workTypeIcon(s.workType)}</span></td>
         <td>${s.startTime || '—'}</td>
         <td>${s.endTime || '—'}</td>
         <td>${s.breakHHMM || '00:00'}</td>
@@ -630,6 +680,7 @@ window.renderMonthly = async function() {
       </tr>`).join('') : `
       <tr>
         <td class="td-date">${day.date.slice(5).replace('-','/')}</td>
+        <td><span class="type-badge">—</span></td>
         <td>${day.startTime || '—'}</td>
         <td>${day.endTime || '—'}</td>
         <td>${day.breakHHMM || ((day.breakMin||0) + '分')}</td>
@@ -638,7 +689,7 @@ window.renderMonthly = async function() {
       </tr>`;
     const totalRow = `
       <tr class="day-total">
-        <td colspan="3">日計（${sessions.length || 1}セッション）</td>
+        <td colspan="4">日計（${sessions.length || 1}セッション）</td>
         <td>${day.breakHHMM || '00:00'}</td>
         <td class="td-net">${day.netHHMM || '00:00'}</td>
         <td class="td-detail">セッション数: ${sessions.length || 1}</td>
@@ -651,6 +702,7 @@ window.renderMonthly = async function() {
       <thead>
         <tr>
           <th>日付</th>
+          <th>区分</th>
           <th>開始</th>
           <th>終了</th>
           <th>休憩</th>
@@ -681,26 +733,26 @@ window.downloadCSV = async function() {
     .sort((a,b)=>a.date.localeCompare(b.date));
 
   const BOM = '\uFEFF'; // Excel文字化け対策
-  const header = '日付,区分,勤務開始,勤務終了,休憩時間,実働時間,実働時間(h),勤務内訳,休憩内訳';
+  const header = '日付,勤務種別,区分,勤務開始,勤務終了,休憩時間,実働時間,実働時間(h),勤務内訳,休憩内訳';
   const lines = [];
   days.forEach(day => {
     const sessions = day.sessions || [];
     if (sessions.length) {
       sessions.forEach((s, idx) => {
         lines.push(
-          `${day.date},セッション${idx+1},${s.startTime||''},${s.endTime||''},${s.breakHHMM||''},${s.netHHMM||''},${msToDecimal(s.netMs||0)},"${s.workRangesText||''}","${s.breakRangesText||''}"`
+          `${day.date},${workTypeIcon(s.workType)},セッション${idx+1},${s.startTime||''},${s.endTime||''},${s.breakHHMM||''},${s.netHHMM||''},${msToDecimal(s.netMs||0)},"${s.workRangesText||''}","${s.breakRangesText||''}"`
         );
       });
     } else {
       lines.push(
-        `${day.date},セッション1,${day.startTime||''},${day.endTime||''},${day.breakHHMM||''},${day.netHHMM||''},${msToDecimal(day.netMs||0)},"",""`
+        `${day.date},,セッション1,${day.startTime||''},${day.endTime||''},${day.breakHHMM||''},${day.netHHMM||''},${msToDecimal(day.netMs||0)},"",""`
       );
     }
-    lines.push(`${day.date},日計,, ,${day.breakHHMM||''},${day.netHHMM||''},${msToDecimal(day.netMs||0)},"",""`);
+    lines.push(`${day.date},,日計,, ,${day.breakHHMM||''},${day.netHHMM||''},${msToDecimal(day.netMs||0)},"",""`);
   });
 
   const totalNet = days.reduce((s,r)=>s+(r.netMs||0),0);
-  lines.push(`合計,月計,,, ,${fmtHHMM(totalNet)},${msToDecimal(totalNet)},"",""`);
+  lines.push(`合計,,月計,,, ,${fmtHHMM(totalNet)},${msToDecimal(totalNet)},"",""`);
 
   const csv = BOM + [header, ...lines].join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
@@ -745,6 +797,7 @@ window.punch = function(action) {
         state.lastSessionMs=0; state.lastSessionBreakMs=0; state.lastSessionNetMs=0;
       }
       state.phase='working'; state.startTime=now; state.breakStart=null; state.breakTotal=0;
+      state.sessionWorkType = state.currentWorkType || 'chef';
       if (!state.firstStartTime) state.firstStartTime=now;
       setPunch('p-','start',timeStr);
       ['break','resume','end'].forEach(k=>resetPunch('p-',k));
@@ -763,9 +816,9 @@ window.punch = function(action) {
       const wasBreak = state.phase === 'break';
       const extraBreakMs = wasBreak && state.breakStart ? (now - state.breakStart) : 0;
       if (wasBreak) {
-        state.history.push({type:'resume', timeStr});
+        state.history.push({type:'resume', timeStr, workType: state.sessionWorkType || state.currentWorkType || 'chef'});
       }
-      state.history.push({type:'end', timeStr});
+      state.history.push({type:'end', timeStr, workType: state.sessionWorkType || state.currentWorkType || 'chef'});
       state.phase='ended';
       setPunch('p-','end',timeStr);
       const sMs  = now - state.startTime;
@@ -789,7 +842,7 @@ window.punch = function(action) {
       break;
     }
   }
-  if (action !== 'end') state.history.push({type:action, timeStr});
+  if (action !== 'end') state.history.push({type:action, timeStr, workType: state.sessionWorkType || state.currentWorkType || 'chef'});
   setStatusUI(state.phase);
   setButtons(state.phase);
   renderHistory(state.history,'historyList');
@@ -818,6 +871,7 @@ if (isAdmin) {
       document.getElementById('adminStatus').textContent='OFFLINE';
       document.getElementById('adminSub').textContent='勤務記録なし';
       document.getElementById('lastUpdated').textContent='最終更新: —';
+      document.getElementById('adminType').textContent='勤務区分: —';
       ['start','break','resume','end'].forEach(k=>resetPunch('ap-',k));
       renderHistory([],'adminHistoryList');
       ['aElWorkItem','aElBreakItem','aElNetItem'].forEach(id=>document.getElementById(id).classList.remove('active'));
@@ -836,6 +890,8 @@ if (isAdmin) {
     state.lastSessionMs       = d.lastSessionMs       || 0;
     state.lastSessionBreakMs  = d.lastSessionBreakMs  || 0;
     state.lastSessionNetMs    = d.lastSessionNetMs    || 0;
+    state.currentWorkType     = d.currentWorkType     || state.currentWorkType || 'chef';
+    state.sessionWorkType     = d.sessionWorkType     || state.sessionWorkType || state.currentWorkType || 'chef';
     const phaseLabel={idle:'OFFLINE',working:'ONLINE',break:'ON BREAK',ended:'FINISHED'};
     const phaseSub  ={idle:'勤務記録なし',working:'勤務中',break:'休憩中',ended:'本日の勤務終了'};
     const cls       ={idle:'idle',working:'working',break:'on-break',ended:'ended'};
@@ -843,6 +899,7 @@ if (isAdmin) {
     as.className=`admin-big-status ${cls[d.phase]||'idle'}`;
     as.textContent=phaseLabel[d.phase]||d.phase;
     document.getElementById('adminSub').textContent=phaseSub[d.phase]||'';
+    document.getElementById('adminType').textContent=`勤務区分: ${workTypeIcon(state.sessionWorkType || state.currentWorkType || 'chef')}`;
     document.getElementById('lastUpdated').textContent=`最終更新: ${fmtTime(new Date(d.updatedAt))}`;
     setStatusUI(d.phase);
     ['start','break','resume','end'].forEach(k=>resetPunch('ap-',k));
@@ -873,6 +930,8 @@ if (!isAdmin) {
     const d = snapshot.val();
     if (!d) {
       state.phase='idle'; state.startTime=null; state.breakStart=null; state.breakTotal=0; state.history=[];
+      state.sessionWorkType='chef';
+      state.currentWorkType=state.currentWorkType || 'chef';
       ['start','break','resume','end'].forEach(k=>resetPunch('p-',k));
       setStatusUI('idle'); setButtons('idle');
       renderHistory([],'historyList');
@@ -899,11 +958,14 @@ if (!isAdmin) {
     state.lastSessionMs       = d.lastSessionMs       || 0;
     state.lastSessionBreakMs  = d.lastSessionBreakMs  || 0;
     state.lastSessionNetMs    = d.lastSessionNetMs    || 0;
+    state.currentWorkType     = d.currentWorkType     || state.currentWorkType || 'chef';
+    state.sessionWorkType     = d.sessionWorkType     || state.sessionWorkType || state.currentWorkType || 'chef';
     state.history        = d.history        || [];
 
     ['start','break','resume','end'].forEach(k=>resetPunch('p-',k));
     state.history.forEach(h=>setPunch('p-',h.type,h.timeStr));
 
+    setWorkType(state.phase === 'idle' ? (state.currentWorkType || 'chef') : (state.sessionWorkType || state.currentWorkType || 'chef'));
     setStatusUI(state.phase);
     setButtons(state.phase);
     renderHistory(state.history,'historyList');
@@ -928,6 +990,7 @@ if (!isAdmin) {
 } else {
   setButtons('idle');
 }
+setWorkType(state.currentWorkType || 'chef');
 </script>
 </body>
 </html>
